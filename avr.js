@@ -5,7 +5,18 @@ var Avr = function(config) {
 
 	this.SREG = config['SREGAddress'];
 
+	this.enabledFunctions = config['enabledFunctions'];
+
 	this.PC = 0;
+}
+
+Avr.prototype.loadProgram = function(base64) {
+
+	var raw = window.atob(base64);
+
+ 	for (i = 0; i < raw.length; i++) {
+ 		this.pMem[i] = raw.charCodeAt(i);
+ 	}
 }
 
 /* C - Carry flag */
@@ -25,10 +36,45 @@ Avr.SREG_T = 0x40;
 /* I - Global interrupt enable */
 Avr.SREG_I = 0x80;
 
+/** Mask for MSB */
 Avr.MSB = 0x80;
+/** Mask for LSB */
 Avr.LSB = 0x01;
 
-
+/** Opcodes */
+Avr.OPCODES = {
+	'000111rdddddrrrr': 'adc',
+	'000011rdddddrrrr': 'add',
+	'10010110KKddKKKK': 'adiw',
+	'001000rdddddrrrr': 'and',
+	'0111KKKKddddKKKK': 'andi',
+	'1001010ddddd0101': 'asr',
+	'100101001sss1000': 'bclr',
+	'1111100ddddd0bbb': 'bld',
+	'111101kkkkkkksss': 'brbc',
+	'111100kkkkkkksss': 'brbs',
+	'111101kkkkkkk000': 'brcc',
+	'111100kkkkkkk000': 'brcs',
+	'1001010110011000': 'break',
+	'111100kkkkkkk001': 'breq',
+	'111101kkkkkkk100': 'brge',
+	'111101kkkkkkk101': 'brhc',
+	'111100kkkkkkk101': 'brhs',
+	'111101kkkkkkk111': 'brid',
+	'111100kkkkkkk111': 'brie',
+	'111100kkkkkkk000': 'brlo',
+	'111100kkkkkkk100': 'brlt',
+	'111100kkkkkkk010': 'brmi',
+	'111101kkkkkkk001': 'brne',
+	'111101kkkkkkk010': 'brpl',
+	'111101kkkkkkk000': 'brsh',
+	'111101kkkkkkk110': 'brtc',
+	'111100kkkkkkk110': 'brts',
+	'111101kkkkkkk011': 'brvc',
+	'111100kkkkkkk011': 'brvs',
+	'100101000sss1000': 'bset',
+	'1111101ddddd0bbb': 'bst'
+};
 
 /**
  * ADC – Add with Carry
@@ -387,10 +433,249 @@ Avr.prototype.brhc = function(k) {
  * 
  * @param k
  */
-Avr.protoype.brhs = function(k) {
+Avr.prototype.brhs = function(k) {
 
 	/* Operation: If H = 1 then PC <- PC + k + 1, else PC <- PC + 1 */
 	(this.dMem[this.SREG] & Avr.SREG_H)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/**
+ * BRID – Branch if Global Interrupt is Disabled
+ * 
+ * Conditional relative branch. 
+ * Tests the Global Interrupt Flag (I) and branches relatively to PC if I is cleared. 
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64).
+ * The parameter k is the offset from PC and is represented in two’s complement form. 
+ * (Equivalent to instruction BRBC 7,k).
+ * 
+ * @param k
+ */
+Avr.protoype.brid = function(k) {
+
+	/* If I = 0 then PC <- PC + k + 1, else PC <- PC + 1 */
+	!(this.dMem[this.SREG] & Avr.SREG_I)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/**
+ * BRIE – Branch if Global Interrupt is Enabled
+ * 
+ * Conditional relative branch. 
+ * Tests the Global Interrupt Flag (I) and branches relatively to PC if I is set.
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64). 
+ * The parameter k is the offset from PC and is represented in two’s complement form. 
+ * (Equivalent to instruction BRBS 7,k).
+ * 
+ * @param k
+ */
+Avr.protoype.brie = function(k) {
+
+	/* If I = 1 then PC <- PC + k + 1, else PC <- PC + 1 */
+	(this.dMem[this.SREG] & Avr.SREG_I)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/**
+ * BRLO – Branch if Lower (Unsigned)
+ * 
+ * Conditional relative branch. 
+ * Tests the Carry Flag (C) and branches relatively to PC if C is set. 
+ * If the instruction is executed immediately after any of the instructions CP, CPI, SUB or SUBI, 
+ * the branch will occur if and only if the unsigned binary number represented in Rd was smaller 
+ * than the unsigned binary number represented in Rr. 
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64). 
+ * The parameter k is the offset from PC and is represented in two’s complement form.
+ * (Equivalent to instruction BRBS 0,k).
+ * 
+ * @param k
+ */
+Avr.protoype.brlo = function(k) {
+
+	/* Operation: If Rd < Rr (C = 1) then PC <- PC + k + 1, else PC <- PC + 1 */
+	(this.dMem[this.SREG] & Avr.SREG_C)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/**
+ * BRLT – Branch if Less Than (Signed)
+ * 
+ * Conditional relative branch. 
+ * Tests the Signed Flag (S) and branches relatively to PC if S is set. 
+ * If the instruction is executed immediately after any of the instructions CP, CPI, SUB or SUBI, 
+ * the branch will occur if and only if the signed binary number represented in Rd was less 
+ * than the signed binary number represented in Rr.
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64). 
+ * The parameter k is the offset from PC and is represented in two’s complement form. 
+ * (Equivalent to instruction BRBS 4,k).
+ * 
+ * @param k
+ */
+Avr.protoype.brlt = function(k) {
+
+	/* Operation: If Rd < Rr (N ⊕ V = 1) then PC ← PC + k + 1, else PC ← PC + 1 */
+	(this.dMem[this.SREG] & Avr.SREG_S)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/**
+ * BRMI – Branch if Minus
+ * 
+ * Conditional relative branch. 
+ * Tests the Negative Flag (N) and branches relatively to PC if N is set. 
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64). 
+ * The parameter k is the offset from PC and is represented in two’s complement form. 
+ * (Equivalent to instruction BRBS 2,k).
+ * 
+ * @param k
+ */
+Avr.prototype.brmi = function(k) {
+
+	/* If N = 1 then PC <- PC + k + 1, else PC <- PC + 1 */
+	(this.dMem[this.SREG] & Avr.SREG_N)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/**
+ * BRNE – Branch if Not Equal
+ * 
+ * Conditional relative branch. 
+ * Tests the Zero Flag (Z) and branches relatively to PC if Z is cleared. 
+ * If the instruction is executed immediately after any of the instructions CP, CPI, SUB or SUBI, 
+ * the branch will occur if and only if the unsigned or signed binary number represented in Rd was not equal 
+ * to the unsigned or signed binary number represented in Rr. 
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64).
+ * The parameter k is the offset from PC and is represented in two’s complement form.
+ * (Equivalent to instruction BRBC 1,k).
+ * 
+ * @param k
+ */
+Avr.prototype.brne = function(k) {
+
+	/* If Rd != Rr (Z = 0) then PC <- PC + k + 1, else PC <- PC + 1 */
+	!(this.dMem[this.SREG] & Avr.SREG_Z)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/**
+ * BRPL – Branch if Plus
+ * 
+ * Conditional relative branch.
+ * Tests the Negative Flag (N) and branches relatively to PC if N is cleared.
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64).
+ * The parameter k is the offset from PC and is brepresented in two’s complement form.
+ * (Equivalent to instruction BRBC 2,k).
+ * 
+ * @param k
+ */
+Avr.prototype.brpl = function(k) {
+
+	!(this.dMem[this.SREG] & Avr.SREG_N)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/**
+ * BRSH – Branch if Same or Higher (Unsigned)
+ * 
+ * Conditional relative branch. 
+ * Tests the Carry Flag (C) and branches relatively to PC if C is cleared.
+ * If the instruction is executed immediately after execution of any of the instructions CP, CPI, SUB or SUBI,
+ * the branch will occur if and only if the unsigned binary number represented in Rd was greater than or equal
+ * to the unsigned binary number represented in Rr. 
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64).
+ * The parameter k is the offset from PC and is represented in two’s complement form.
+ * (Equivalent to instruction BRBC 0,k).
+ *
+ * @param k
+ */
+Avr.prototype.brsh = function(k) {
+
+	/* Operation: If Rd >= Rr (C = 0) then PC <- PC + k + 1, else PC <- PC + 1 */
+	!(this.dMem[this.SREG] & Avr.SREG_C)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/**
+ * BRTC – Branch if the T Flag is Cleared
+ * 
+ * Conditional relative branch. 
+ * Tests the T Flag and branches relatively to PC if T is cleared. 
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64). 
+ * The parameter k is the offset from PC and is represented in two’s complement form.
+ * (Equivalent to instruction BRBC 6,k).
+ * 
+ * @param k
+ */
+Avr.prototype.brtc = function(k) {
+
+	/* Operation: If T = 0 then PC <- PC + k + 1, else PC <- PC + 1 */
+	!(this.dMem[this.SREG] & Avr.SREG_T)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/**
+ * BRTS – Branch if the T Flag is Set
+ * 
+ * Conditional relative branch. 
+ * Tests the T Flag and branches relatively to PC if T is set.
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64).
+ * The parameter k is the offset from PC and is represented in two’s complement form.
+ * (Equivalent to instruction BRBS 6,k).
+ * 
+ * @param k
+ */
+Avr.prototype.brts = function(k) {
+
+	/* Operation: If T = 1 then PC <- PC + k + 1, else PC <- PC + 1 */
+	(this.dMem[this.SREG] & Avr.SREG_T)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/** 
+ * BVRC - Branch if Overflow Cleared
+ * 
+ * Conditional relative branch. 
+ * Tests the Overflow Flag (V) and branches relatively to PC if V is cleared.
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64). 
+ * The parameter k is the offset from PC and is represented in two’s complement form. 
+ * (Equivalent to instruction BRBC 3,k).
+ * 
+ * @param k
+ */
+Avr.prototype.brvc = function(k) {
+
+	/* Operation: If V = 0 then PC <- PC + k + 1, else PC <- PC + 1 */
+	!(this.dMem[this.SREG] & Avr.SREG_V)
+		? this.PC += (k + 1)
+		: this.PC++;
+};
+
+/**
+ * BRVS – Branch if Overflow Set
+ *
+ * Conditional relative branch. 
+ * Tests the Overflow Flag (V) and branches relatively to PC if V is set. 
+ * This instruction branches relatively to PC in either direction (PC - 63 ≤ destination ≤ PC + 64). 
+ * The parameter k is the offset from PC and is represented in two’s complement form. 
+ * (Equivalent to instruction BRBS 3,k)
+ *
+ * @param k
+ */
+Avr.prototype.brvs = function(k) {
+
+	/** Operation: If V = 1 then PC <- PC + k + 1, else PC <- PC + 1 */
+	(this.dMem[this.SREG] & Avr.SREG_V)
 		? this.PC += (k + 1)
 		: this.PC++;
 };
