@@ -679,3 +679,40 @@ Avr.prototype.brvs = function(k) {
 		? this.PC += (k + 1)
 		: this.PC++;
 };
+
+/**
+ * BSET – Bit Set in SREG
+ * 
+ * Sets a single Flag or bit in SREG.
+ * 
+ * @param s
+ */
+Avr.prototype.bset = function(s) {
+
+	this.dMem[this.SREG] |= (0x01 << s);
+	
+	/* @TODO */
+
+	/* Program Counter: PC <- PC + 1 */
+	this.PC++;
+};
+
+/**
+ * BST – Bit Store from Bit in Register to T Flag in SREG
+ * 
+ * Stores bit b from Rd to the T Flag in SREG (Status Register).
+ * 
+ * @param _Rd
+ * @param b
+ */
+Avr.prototype.bst = function(Rd, b) {
+
+	var mask = 0x01 << b;
+
+	this.dMem[Rd] & mask
+		? this.dMem[this.SREG] |= mask
+		: this.dMem[this.SREG] &= ~mask;
+
+	/* Program Counter: PC <- PC + 1 */
+	this.PC++;
+};
